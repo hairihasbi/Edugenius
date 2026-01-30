@@ -76,15 +76,26 @@ export const DB = {
   },
 
   async getJobs(): Promise<QuizJob[]> {
-    if (!this.client) return JSON.parse(localStorage.getItem('edugenius_jobs') || '[]');
+    if (!this.client) {
+      const jobs = JSON.parse(localStorage.getItem('edugenius_jobs') || '[]');
+      return jobs;
+    }
     try {
       const rs = await this.client.execute("SELECT * FROM jobs ORDER BY created_at DESC");
+      // Map database snake_case to TypeScript camelCase
       return rs.rows.map(row => ({
-        ...row,
+        id: String(row.id),
+        title: String(row.title),
+        subject: String(row.subject),
+        grade: String(row.grade) as any,
+        topic: String(row.topic),
+        status: String(row.status) as any,
         progress: Number(row.progress),
-        published: Boolean(row.published),
-        results: JSON.parse(row.results as string || '[]')
-      } as any));
+        results: JSON.parse(String(row.results || '[]')),
+        error: row.error ? String(row.error) : undefined,
+        createdAt: String(row.created_at), // Correct mapping
+        published: row.published === 1 // Convert integer to boolean
+      } as QuizJob));
     } catch (e) {
       console.error("Turso GetJobs failed, falling back to local", e);
       return JSON.parse(localStorage.getItem('edugenius_jobs') || '[]');
@@ -101,7 +112,19 @@ export const DB = {
     }
     await this.client.execute({
       sql: "INSERT INTO jobs (id, title, subject, grade, topic, status, progress, results, error, created_at, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title=excluded.title, status=excluded.status, progress=excluded.progress, results=excluded.results, error=excluded.error, published=excluded.published",
-      args: [job.id, job.title, job.subject, job.grade, job.topic, job.status, job.progress, JSON.stringify(job.results || []), job.error || null, job.createdAt, job.published ? 1 : 0]
+      args: [
+        job.id, 
+        job.title, 
+        job.subject, 
+        job.grade, 
+        job.topic, 
+        job.status, 
+        job.progress, 
+        JSON.stringify(job.results || []), 
+        job.error || null, 
+        job.createdAt, // Map to created_at in SQL
+        job.published ? 1 : 0 // Store boolean as integer
+      ]
     });
   },
 
@@ -222,7 +245,7 @@ export const DB = {
       const rs = await this.client.execute("SELECT * FROM users");
       return rs.rows.map(row => ({
         ...row,
-        active: Boolean(row.active)
+        active: row.active === 1
       } as any));
     } catch {
       return JSON.parse(localStorage.getItem('edugenius_users') || '[]');

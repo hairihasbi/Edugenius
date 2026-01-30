@@ -10,11 +10,9 @@ export const GeminiService = {
     const activeKeys = keys.filter(k => k.status === 'ACTIVE');
     
     if (activeKeys.length === 0) {
-      // Fallback to default injected key if no manual keys provided
       return process.env.API_KEY || "";
     }
 
-    // Pick a key (simple random rotation)
     const picked = activeKeys[Math.floor(Math.random() * activeKeys.length)];
     await DB.updateApiKeyUsage(picked.key);
     return picked.key;
@@ -37,11 +35,19 @@ export const GeminiService = {
     const settings = await DB.getSettings();
     
     const prompt = `
-      Buatkan ${params.numQuestions} soal ${params.type} untuk mata pelajaran ${params.subject} kelas ${params.grade}.
-      Topik: ${params.topic}.
-      Tingkat Kesulitan: ${params.difficulty}.
-      Level Kognitif: ${params.cognitiveLevel}.
-      ${params.summary ? `Gunakan ringkasan materi berikut sebagai acuan: ${params.summary}` : ''}
+      BUATKAN ${params.numQuestions} SOAL DALAM FORMAT JSON.
+      Mata Pelajaran: ${params.subject}
+      Kelas: ${params.grade}
+      Topik: ${params.topic}
+      Tipe Soal: ${params.type}
+      Tingkat Kesulitan: ${params.difficulty}
+      Level Kognitif: ${params.cognitiveLevel}
+      ${params.summary ? `REFERENSI MATERI: ${params.summary}` : ''}
+
+      INSTRUKSI KHUSUS:
+      1. Kembalikan HANYA array JSON sesuai schema.
+      2. Gunakan LaTeX standar untuk rumus matematika/kimia.
+      3. Pastikan kunci jawaban dan pembahasan akurat sesuai kurikulum merdeka.
     `;
 
     try {
@@ -49,7 +55,7 @@ export const GeminiService = {
         model: params.modelName,
         contents: prompt,
         config: {
-          systemInstruction: SYSTEM_PROMPT_TEMPLATE(params.subject, params.language),
+          systemInstruction: SYSTEM_PROMPT_TEMPLATE(params.subject, params.language) + "\nOUTPUT MUST BE A VALID JSON ARRAY.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,
@@ -76,13 +82,13 @@ export const GeminiService = {
       let quizData: QuizQuestion[] = JSON.parse(response.text || '[]');
 
       if (settings.aiFactChecker && quizData.length > 0) {
-        await DB.addLog('INFO', `Memulai AI Fact Checker untuk ${quizData.length} soal...`);
+        await DB.addLog('INFO', `Memulai AI Fact Checker untuk paket: ${params.topic}`);
         quizData = await this.factCheckQuiz(quizData, params.subject, params.language);
       }
 
       return quizData;
     } catch (error: any) {
-      await DB.addLog('ERROR', `Gemini API Error: ${error.message}`);
+      await DB.addLog('ERROR', `Gagal Generate (${params.modelName}): ${error.message}`);
       throw error;
     }
   },
@@ -91,18 +97,14 @@ export const GeminiService = {
     const apiKey = await this.getRotatingApiKey();
     const ai = new GoogleGenAI({ apiKey });
     
-    const factCheckPrompt = `
-      Anda adalah pakar peninjau soal (Editor Ahli) untuk mata pelajaran ${subject}.
-      Tugas Anda adalah memverifikasi fakta, ketepatan kunci jawaban, dan kejelasan pembahasan.
-      Data soal: ${JSON.stringify(quiz)}
-    `;
+    const factCheckPrompt = `Verifikasi soal-soal berikut. Koreksi jika ada kesalahan fakta atau kunci jawaban. Data: ${JSON.stringify(quiz)}`;
 
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: factCheckPrompt,
         config: {
-          systemInstruction: "Tinjau keakuratan soal. Kembalikan data dalam format JSON yang sama namun tambahkan field 'factCheckStatus' dan 'factCheckComment'.",
+          systemInstruction: "Anda adalah editor ahli. Kembalikan data soal yang sudah dikoreksi dengan tambahan status verifikasi.",
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,
@@ -129,30 +131,8 @@ export const GeminiService = {
         return check ? { ...q, ...check } : q;
       });
     } catch (error: any) {
-      await DB.addLog('WARNING', `AI Fact Checker gagal: ${error.message}`);
+      await DB.addLog('WARNING', `Fact Checker Gagal: ${error.message}`);
       return quiz;
-    }
-  },
-
-  async generateImage(prompt: string): Promise<string> {
-    const apiKey = await this.getRotatingApiKey();
-    const ai = new GoogleGenAI({ apiKey });
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: `Create an educational illustration for: ${prompt}. Clean style.`,
-      });
-
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            return `data:image/png;base64,${part.inlineData.data}`;
-          }
-        }
-      }
-      return 'SVG_FALLBACK';
-    } catch (error: any) {
-      return 'SVG_FALLBACK';
     }
   }
 };
