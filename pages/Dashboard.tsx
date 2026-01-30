@@ -20,6 +20,7 @@ const Dashboard = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [userCount, setUserCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState<'TURSO' | 'LOCAL'>('LOCAL');
 
   useEffect(() => {
     const loadData = async () => {
@@ -33,6 +34,7 @@ const Dashboard = () => {
       setKeys(k);
       setLogs(l);
       setUserCount(u.length);
+      setDbStatus(DB.getConnectionType());
       setLoading(false);
     };
     loadData();
@@ -98,8 +100,14 @@ const Dashboard = () => {
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border">
-            <h2 className="text-lg font-bold text-slate-800 mb-4">Status API Studio</h2>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Status Engine & Database</h2>
             <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500 font-medium">Database</span>
+                <span className={`font-black ${dbStatus === 'TURSO' ? 'text-green-600' : 'text-amber-600'}`}>
+                  {dbStatus === 'TURSO' ? 'Cloud SQLite (Turso)' : 'Browser Local Storage'}
+                </span>
+              </div>
               <div className="flex justify-between text-sm">
                 <span className="text-slate-500 font-medium">Auto-Rotation</span>
                 <span className="text-green-600 font-black">AKTIF</span>
