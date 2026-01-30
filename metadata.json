@@ -1,0 +1,7 @@
+{
+  "name": "EduGenius Quiz AI - Kurikulum Merdeka",
+  "description": "Platform AI tercanggih untuk pembuatan soal kuis berbasis Kurikulum Merdeka dengan dukungan Gemini AI, LaTeX, dan multi-bahasa.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
