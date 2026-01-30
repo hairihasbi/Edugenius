@@ -18,6 +18,10 @@ const SiteSettings = () => {
     tursoToken: ''
   });
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success'>('idle');
+  const [testStatus, setTestStatus] = useState<{ status: 'idle' | 'testing' | 'success' | 'error'; message: string }>({
+    status: 'idle',
+    message: ''
+  });
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -33,6 +37,19 @@ const SiteSettings = () => {
       ...prev,
       [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked : value
     }));
+    // Reset test status when inputs change
+    if (name === 'tursoUrl' || name === 'tursoToken') {
+      setTestStatus({ status: 'idle', message: '' });
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setTestStatus({ status: 'testing', message: 'Mencoba menghubungkan...' });
+    const result = await DB.testConnection(settings.tursoUrl || '', settings.tursoToken || '');
+    setTestStatus({ 
+      status: result.success ? 'success' : 'error', 
+      message: result.message 
+    });
   };
 
   const handleSave = async () => {
@@ -68,10 +85,25 @@ const SiteSettings = () => {
         <div className="space-y-6">
           {/* Database Config */}
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-orange-200 bg-orange-50/20">
-            <h2 className="text-lg font-bold text-orange-800 mb-6 flex items-center space-x-2">
-              <span className="text-xl">☁️</span>
-              <span>Cloud Database (Turso SQLite)</span>
-            </h2>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-lg font-bold text-orange-800 flex items-center space-x-2">
+                <span className="text-xl">☁️</span>
+                <span>Cloud Database (Turso SQLite)</span>
+              </h2>
+              <button 
+                onClick={handleTestConnection}
+                disabled={testStatus.status === 'testing'}
+                className={`px-3 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all ${
+                  testStatus.status === 'testing' ? 'bg-slate-200 text-slate-400' : 
+                  testStatus.status === 'success' ? 'bg-green-100 text-green-700' :
+                  testStatus.status === 'error' ? 'bg-red-100 text-red-700' :
+                  'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                }`}
+              >
+                {testStatus.status === 'testing' ? '⌛ Testing...' : 'Test Connection'}
+              </button>
+            </div>
+            
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-orange-600 uppercase mb-1">Turso DB URL</label>
@@ -89,6 +121,13 @@ const SiteSettings = () => {
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
                 />
               </div>
+              
+              {testStatus.message && (
+                <div className={`p-3 rounded-xl text-xs font-bold ${testStatus.status === 'success' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                  {testStatus.status === 'success' ? '✅' : '❌'} {testStatus.message}
+                </div>
+              )}
+              
               <p className="text-[10px] text-orange-500 italic">
                 Kosongkan untuk tetap menggunakan Local Storage (Offline Mode). Data akan otomatis disinkronkan ke Cloud setelah kredensial disimpan.
               </p>
