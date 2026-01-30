@@ -4,17 +4,26 @@ import { QuizJob, ApiKey, SiteSettings, LogEntry, User } from '../types';
 
 // Helper to get Turso Config from localStorage (bootstrapping)
 const getTursoConfig = () => {
-  const settings = JSON.parse(localStorage.getItem('edugenius_settings') || '{}');
-  return {
-    url: settings.tursoUrl || "",
-    authToken: settings.tursoToken || ""
-  };
+  try {
+    const settings = JSON.parse(localStorage.getItem('edugenius_settings') || '{}');
+    return {
+      url: settings.tursoUrl || "",
+      authToken: settings.tursoToken || ""
+    };
+  } catch {
+    return { url: "", authToken: "" };
+  }
 };
 
 const initTurso = () => {
   const config = getTursoConfig();
   if (!config.url) return null;
-  return createClient(config);
+  try {
+    return createClient(config);
+  } catch (e) {
+    console.error("Failed to create Turso client:", e);
+    return null;
+  }
 };
 
 // SQL initialization script
@@ -30,7 +39,10 @@ export const DB = {
   client: initTurso(),
 
   async init() {
-    if (!this.client) return;
+    if (!this.client) {
+      console.log("DB: Using Local Storage fallback.");
+      return;
+    }
     try {
       for (const sql of INIT_SQL) {
         await this.client.execute(sql);
@@ -40,20 +52,43 @@ export const DB = {
       if (users.length === 0) {
         await this.saveUser({ id: 'admin', username: 'hairi', name: 'Admin Utama', role: 'ADMIN', active: true, password: 'Midorima88@@' });
       }
+      console.log("DB: Turso Cloud SQLite Initialized.");
     } catch (e) {
-      console.error("Database Init Failed", e);
+      console.error("Database Init Failed:", e);
+      this.client = null; // Fallback to local if server error
     }
+  },
+
+  async testConnection(url: string, token: string): Promise<{ success: boolean; message: string }> {
+    if (!url) return { success: false, message: "URL Database tidak boleh kosong." };
+    try {
+      const tempClient = createClient({ url, authToken: token });
+      await tempClient.execute("SELECT 1");
+      return { success: true, message: "Koneksi berhasil! Database siap digunakan." };
+    } catch (e: any) {
+      console.error("Test Connection Failed:", e);
+      return { success: false, message: `Koneksi gagal: ${e.message}` };
+    }
+  },
+
+  getConnectionType(): 'TURSO' | 'LOCAL' {
+    return this.client ? 'TURSO' : 'LOCAL';
   },
 
   async getJobs(): Promise<QuizJob[]> {
     if (!this.client) return JSON.parse(localStorage.getItem('edugenius_jobs') || '[]');
-    const rs = await this.client.execute("SELECT * FROM jobs ORDER BY created_at DESC");
-    return rs.rows.map(row => ({
-      ...row,
-      progress: Number(row.progress),
-      published: Boolean(row.published),
-      results: JSON.parse(row.results as string || '[]')
-    } as any));
+    try {
+      const rs = await this.client.execute("SELECT * FROM jobs ORDER BY created_at DESC");
+      return rs.rows.map(row => ({
+        ...row,
+        progress: Number(row.progress),
+        published: Boolean(row.published),
+        results: JSON.parse(row.results as string || '[]')
+      } as any));
+    } catch (e) {
+      console.error("Turso GetJobs failed, falling back to local", e);
+      return JSON.parse(localStorage.getItem('edugenius_jobs') || '[]');
+    }
   },
 
   async saveJob(job: QuizJob): Promise<void> {
@@ -81,8 +116,12 @@ export const DB = {
 
   async getApiKeys(): Promise<ApiKey[]> {
     if (!this.client) return JSON.parse(localStorage.getItem('edugenius_keys') || '[]');
-    const rs = await this.client.execute("SELECT * FROM api_keys");
-    return rs.rows.map(row => ({ key: row.key, status: row.status, usageCount: Number(row.usage_count) } as any));
+    try {
+      const rs = await this.client.execute("SELECT * FROM api_keys");
+      return rs.rows.map(row => ({ key: row.key, status: row.status, usageCount: Number(row.usage_count) } as any));
+    } catch {
+      return JSON.parse(localStorage.getItem('edugenius_keys') || '[]');
+    }
   },
 
   async saveApiKeys(keys: ApiKey[]): Promise<void> {
@@ -122,9 +161,13 @@ export const DB = {
       const saved = localStorage.getItem('edugenius_settings');
       return saved ? JSON.parse(saved) : defaults;
     }
-    const rs = await this.client.execute("SELECT data FROM settings WHERE id = 'main'");
-    if (rs.rows.length === 0) return defaults;
-    return JSON.parse(rs.rows[0].data as string);
+    try {
+      const rs = await this.client.execute("SELECT data FROM settings WHERE id = 'main'");
+      if (rs.rows.length === 0) return defaults;
+      return JSON.parse(rs.rows[0].data as string);
+    } catch {
+      return defaults;
+    }
   },
 
   async saveSettings(settings: SiteSettings): Promise<void> {
@@ -140,8 +183,12 @@ export const DB = {
 
   async getLogs(): Promise<LogEntry[]> {
     if (!this.client) return JSON.parse(localStorage.getItem('edugenius_logs') || '[]');
-    const rs = await this.client.execute("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100");
-    return rs.rows.map(row => ({ ...row } as any));
+    try {
+      const rs = await this.client.execute("SELECT * FROM logs ORDER BY timestamp DESC LIMIT 100");
+      return rs.rows.map(row => ({ ...row } as any));
+    } catch {
+      return JSON.parse(localStorage.getItem('edugenius_logs') || '[]');
+    }
   },
 
   async addLog(level: LogEntry['level'], message: string): Promise<void> {
@@ -171,11 +218,15 @@ export const DB = {
       const saved = localStorage.getItem('edugenius_users');
       return saved ? JSON.parse(saved) : [];
     }
-    const rs = await this.client.execute("SELECT * FROM users");
-    return rs.rows.map(row => ({
-      ...row,
-      active: Boolean(row.active)
-    } as any));
+    try {
+      const rs = await this.client.execute("SELECT * FROM users");
+      return rs.rows.map(row => ({
+        ...row,
+        active: Boolean(row.active)
+      } as any));
+    } catch {
+      return JSON.parse(localStorage.getItem('edugenius_users') || '[]');
+    }
   },
 
   async saveUser(user: User): Promise<void> {
