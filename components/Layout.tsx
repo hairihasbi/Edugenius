@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { DB } from '../services/db';
 
 const SidebarItem: React.FC<{ to: string, icon: string, label: string, active: boolean }> = ({ to, icon, label, active }) => (
   <Link 
@@ -23,6 +24,7 @@ const Layout: React.FC<LayoutProps> = ({ children, isAdmin: isAdminProp }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'TURSO' | 'LOCAL'>('LOCAL');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -40,6 +42,7 @@ const Layout: React.FC<LayoutProps> = ({ children, isAdmin: isAdminProp }) => {
       setIsAuthenticated(false);
       setIsAdmin(false);
     }
+    setDbStatus(DB.getConnectionType());
   }, [isAdminProp, location.pathname]);
 
   const handleLogout = () => {
@@ -118,13 +121,24 @@ const Layout: React.FC<LayoutProps> = ({ children, isAdmin: isAdminProp }) => {
             )}
           </nav>
 
-          <button 
-            onClick={handleLogout}
-            className="mt-auto flex items-center space-x-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-          >
-            <span>🚪</span>
-            <span className="text-sm font-medium">Keluar</span>
-          </button>
+          <div className="mt-auto pt-4 border-t space-y-2">
+            <div className="px-4 py-2 bg-slate-50 rounded-lg flex items-center justify-between">
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DB Status</span>
+              <div className="flex items-center space-x-1.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${dbStatus === 'TURSO' ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`}></div>
+                <span className={`text-[9px] font-black uppercase ${dbStatus === 'TURSO' ? 'text-green-600' : 'text-amber-600'}`}>
+                  {dbStatus === 'TURSO' ? 'Cloud' : 'Local'}
+                </span>
+              </div>
+            </div>
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center space-x-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            >
+              <span>🚪</span>
+              <span className="text-sm font-medium">Keluar</span>
+            </button>
+          </div>
         </div>
       </div>
 
